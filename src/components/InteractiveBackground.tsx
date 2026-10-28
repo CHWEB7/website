@@ -81,26 +81,26 @@ export default function InteractiveBackground() {
     const DUST_MAX = 100;
     function buildField() {
       field.length = 0;
-      const spacing = Math.max(28, Math.min(42, Math.floor(width / 36)));
+      const spacing = Math.max(22, Math.min(34, Math.floor(width / 42)));
       const cols = Math.ceil(width / spacing) + 2;
       const rows = Math.ceil(height / spacing) + 2;
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
-          // Sparse: keep ~55% of the grid so it feels like GitLab's dot field
-          if (Math.random() > 0.55) continue;
-          const x = col * spacing + (Math.random() - 0.5) * spacing * 0.5;
-          const y = row * spacing + (Math.random() - 0.5) * spacing * 0.5;
+          // Keep most of the grid — readable GitLab-style pixel dust
+          if (Math.random() > 0.72) continue;
+          const x = col * spacing + (Math.random() - 0.5) * spacing * 0.55;
+          const y = row * spacing + (Math.random() - 0.5) * spacing * 0.55;
           field.push({
             x,
             y,
             ox: x,
             oy: y,
-            size: 1.2 + Math.random() * 2.2,
+            size: 1.8 + Math.random() * 2.8,
             phase: Math.random() * Math.PI * 2,
-            speed: 0.35 + Math.random() * 0.9,
-            drift: 4 + Math.random() * 10,
+            speed: 0.4 + Math.random() * 1.1,
+            drift: 6 + Math.random() * 14,
             color: COLORS[(Math.random() * COLORS.length) | 0],
-            baseAlpha: 0.12 + Math.random() * 0.28,
+            baseAlpha: 0.28 + Math.random() * 0.4,
           });
         }
       }
@@ -307,9 +307,9 @@ export default function InteractiveBackground() {
           near = Math.max(0, 1 - dist / 180);
         }
 
-        const alpha = pixel.baseAlpha * twinkle * (0.75 + near * 0.9);
-        const size = pixel.size * (0.85 + near * 0.7 + twinkle * 0.15);
-        ctx!.globalAlpha = Math.min(0.7, alpha);
+        const alpha = pixel.baseAlpha * twinkle * (0.85 + near * 0.85);
+        const size = pixel.size * (0.9 + near * 0.8 + twinkle * 0.2);
+        ctx!.globalAlpha = Math.min(0.85, alpha);
         ctx!.fillStyle = pixel.color;
         ctx!.fillRect(pixel.x - size / 2, pixel.y - size / 2, size, size);
       }
