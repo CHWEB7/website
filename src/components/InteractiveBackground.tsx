@@ -11,7 +11,6 @@ type TrailPoint = {
 
 /**
  * Soft atmospheric field + logo cursor with a pixelating motion tail.
- * Inspired by premium interactive heroes (e.g. about.gitlab.com motion language).
  */
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -26,37 +25,37 @@ export default function InteractiveBackground() {
     const reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    const finePointer = window.matchMedia("(pointer: fine)").matches;
 
     let width = 0;
     let height = 0;
     let dpr = 1;
     let raf = 0;
-    let pointerX = width * 0.55 || 0;
-    let pointerY = height * 0.4 || 0;
-    let targetX = pointerX;
-    let targetY = pointerY;
-    let prevX = pointerX;
-    let prevY = pointerY;
+    let pointerX = 0;
+    let pointerY = 0;
+    let targetX = 0;
+    let targetY = 0;
+    let prevX = 0;
+    let prevY = 0;
     let velocity = 0;
     let time = 0;
-    let active = false;
+    let hasPointer = false;
     const trail: TrailPoint[] = [];
 
     const logo = new Image();
+    logo.decoding = "async";
     logo.src = "/logo.png";
-    let logoReady = false;
+    let logoReady = logo.complete && logo.naturalWidth > 0;
     logo.onload = () => {
       logoReady = true;
     };
 
     const pixelBuf = document.createElement("canvas");
-    const pixelCtx = pixelBuf.getContext("2d", { willReadFrequently: false });
+    const pixelCtx = pixelBuf.getContext("2d");
 
     const ACCENT_A = { r: 171, g: 59, b: 255 };
     const ACCENT_B = { r: 253, g: 128, b: 255 };
-    const LOGO_SIZE = 56;
-    const TRAIL_MAX = 28;
+    const LOGO_SIZE = 64;
+    const TRAIL_MAX = 36;
 
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -68,7 +67,7 @@ export default function InteractiveBackground() {
       canvas!.style.height = `${height}px`;
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      if (!active) {
+      if (!hasPointer) {
         targetX = width * 0.62;
         targetY = height * 0.42;
         pointerX = targetX;
@@ -79,14 +78,11 @@ export default function InteractiveBackground() {
     }
 
     function onPointerMove(e: PointerEvent) {
-      if (!finePointer) return;
-      active = true;
+      // Touch keeps the native finger affordance; mouse/pen drive the logo cursor
+      if (e.pointerType === "touch") return;
+      hasPointer = true;
       targetX = e.clientX;
       targetY = e.clientY;
-    }
-
-    function onPointerLeave() {
-      active = false;
     }
 
     function drawOrb(
@@ -120,7 +116,7 @@ export default function InteractiveBackground() {
 
       const px = Math.max(1, Math.round(pixelSize));
       ctx!.save();
-      ctx!.globalAlpha = alpha;
+      ctx!.globalAlpha = Math.min(1, alpha);
 
       if (px <= 1.5) {
         ctx!.imageSmoothingEnabled = true;
@@ -129,7 +125,6 @@ export default function InteractiveBackground() {
         return;
       }
 
-      // Downscale then nearest-neighbor upscale = chunky pixel dissolve
       const cells = Math.max(3, Math.round(size / px));
       pixelBuf.width = cells;
       pixelBuf.height = cells;
@@ -145,79 +140,86 @@ export default function InteractiveBackground() {
     function frame() {
       time += 0.012;
 
-      const ease = active ? 0.22 : 0.06;
+      const ease = hasPointer ? 0.28 : 0.05;
       pointerX += (targetX - pointerX) * ease;
       pointerY += (targetY - pointerY) * ease;
 
       const dx = pointerX - prevX;
       const dy = pointerY - prevY;
       const instant = Math.hypot(dx, dy);
-      velocity += (instant - velocity) * 0.25;
+      velocity += (instant - velocity) * 0.28;
       prevX = pointerX;
       prevY = pointerY;
 
-      // Seed trail while moving
-      if (finePointer && !reduceMotion && instant > 0.4) {
-        const pixel = 1 + Math.min(14, velocity * 0.55);
-        trail.push({
-          x: pointerX,
-          y: pointerY,
-          life: 1,
-          pixel,
-        });
+      if (!reduceMotion && hasPointer && instant > 0.35) {
+        // Densify trail on fast moves so the tail reads clearly
+        const steps = Math.min(4, 1 + Math.floor(instant / 18));
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps;
+          trail.push({
+            x: prevX + dx * t,
+            y: prevY + dy * t,
+            life: 1,
+            pixel: 1.5 + Math.min(16, velocity * 0.65),
+          });
+        }
         while (trail.length > TRAIL_MAX) trail.shift();
       }
 
       for (const point of trail) {
-        point.life -= 0.028;
-        point.pixel += 0.18;
+        point.life -= 0.024;
+        point.pixel += 0.22;
       }
       while (trail.length && trail[0].life <= 0) trail.shift();
 
       ctx!.clearRect(0, 0, width, height);
 
-      // Quiet atmosphere — no geometric mesh
-      const driftX = Math.sin(time * 0.35) * 30;
-      const driftY = Math.cos(time * 0.28) * 24;
-      const followX = finePointer ? (pointerX - width / 2) * 0.04 : 0;
-      const followY = finePointer ? (pointerY - height / 2) * 0.04 : 0;
+      const driftX = Math.sin(time * 0.35) * 28;
+      const driftY = Math.cos(time * 0.28) * 22;
+      const followX = hasPointer ? (pointerX - width / 2) * 0.035 : 0;
+      const followY = hasPointer ? (pointerY - height / 2) * 0.035 : 0;
 
       drawOrb(
         width * 0.75 + driftX + followX,
         height * 0.28 + driftY + followY,
         Math.max(width, height) * 0.42,
         ACCENT_A,
-        0.16,
+        0.15,
       );
       drawOrb(
         width * 0.22 - driftX * 0.6 + followX,
         height * 0.72 - driftY * 0.6 + followY,
         Math.max(width, height) * 0.36,
         ACCENT_B,
-        0.14,
+        0.13,
       );
 
-      // Soft bloom under the living cursor
-      if (finePointer) {
-        const bloom = 0.1 + Math.min(0.18, velocity * 0.01);
-        drawOrb(pointerX, pointerY, 120 + velocity * 2, ACCENT_B, bloom);
+      if (hasPointer) {
+        drawOrb(
+          pointerX,
+          pointerY,
+          110 + velocity * 2.2,
+          ACCENT_B,
+          0.1 + Math.min(0.16, velocity * 0.008),
+        );
       }
 
-      // Tail: oldest (most pixelated) first
       for (let i = 0; i < trail.length; i++) {
         const point = trail[i];
         const t = i / Math.max(trail.length - 1, 1);
-        const size = LOGO_SIZE * (0.45 + t * 0.35);
-        const alpha = point.life * (0.15 + t * 0.35);
+        const size = LOGO_SIZE * (0.4 + t * 0.45);
+        const alpha = point.life * (0.18 + t * 0.45);
         drawPixelLogo(point.x, point.y, size, point.pixel, alpha);
       }
 
-      // Head: crisp when still, pixelates while moving
-      if (finePointer && logoReady) {
+      // Idle mark before first move; live cursor after
+      if (logoReady) {
         const headPixel = reduceMotion
           ? 1
-          : 1 + Math.min(10, velocity * 0.42);
-        const headAlpha = active ? 0.95 : 0.55;
+          : hasPointer
+            ? 1 + Math.min(12, velocity * 0.5)
+            : 1;
+        const headAlpha = hasPointer ? 1 : 0.45;
         drawPixelLogo(pointerX, pointerY, LOGO_SIZE, headPixel, headAlpha);
       }
 
@@ -229,7 +231,6 @@ export default function InteractiveBackground() {
     resize();
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerleave", onPointerLeave);
 
     if (reduceMotion) {
       frame();
@@ -241,15 +242,15 @@ export default function InteractiveBackground() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerleave", onPointerLeave);
     };
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
+      data-logo-cursor="true"
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 h-full w-full"
+      className="pointer-events-none absolute inset-0 z-0 h-full w-full"
     />
   );
 }

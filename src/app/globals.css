@@ -110,15 +110,21 @@ body {
   outline-offset: 3px;
 }
 
-/* Logo becomes the pointer on fine-pointer devices */
-@media (pointer: fine) {
+/* Logo canvas is the pointer; hide the system cursor on the hero */
+.hero-stage,
+.hero-stage a,
+.hero-stage button {
+  cursor: none;
+}
+
+@media (pointer: coarse) {
   .hero-stage {
-    cursor: none;
+    cursor: auto;
   }
 
   .hero-stage a,
   .hero-stage button {
-    cursor: none;
+    cursor: pointer;
   }
 }
 
