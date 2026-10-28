@@ -2,32 +2,21 @@
 
 import { useEffect, useRef } from "react";
 
-type FieldPixel = {
+type Dot = {
   x: number;
   y: number;
   ox: number;
   oy: number;
-  size: number;
   phase: number;
-  speed: number;
-  drift: number;
-  color: string;
-  baseAlpha: number;
-};
-
-type Dust = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  size: number;
-  color: string;
+  band: number;
 };
 
 /**
- * GitLab-style drifting pixel field + logo cursor that fades in while
- * moving (pixelated), then fades out when idle.
+ * GitLab-style dither field:
+ * - dense tiny dots on a tight grid
+ * - continuous drifting density clouds (no mouse required)
+ * - cursor creates a local density / brightness swell
+ * - system cursor stays visible
  */
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,63 +36,39 @@ export default function InteractiveBackground() {
     let height = 0;
     let dpr = 1;
     let raf = 0;
-    let pointerX = 0;
-    let pointerY = 0;
-    let targetX = 0;
-    let targetY = 0;
-    let prevX = 0;
-    let prevY = 0;
-    let velocity = 0;
     let time = 0;
+    let pointerX = -9999;
+    let pointerY = -9999;
+    let targetX = -9999;
+    let targetY = -9999;
     let hasPointer = false;
-    let moving = false;
-    let idleMs = 0;
-    let cursorAlpha = 0;
-    let lastMoveAt = 0;
-    const field: FieldPixel[] = [];
-    const dust: Dust[] = [];
+    let dots: Dot[] = [];
+    let spacing = 5;
 
-    const logo = new Image();
-    logo.decoding = "async";
-    logo.src = "/logo.png";
-    let logoReady = logo.complete && logo.naturalWidth > 0;
-    logo.onload = () => {
-      logoReady = true;
-    };
+    // Soft brand tint over GitLab-like cool grey dots
+    const DOT_RGB = { r: 180, g: 150, b: 220 };
 
-    const pixelBuf = document.createElement("canvas");
-    const pixelCtx = pixelBuf.getContext("2d");
-
-    const COLORS = ["#AB3BFF", "#D15BFF", "#FD80FF", "#C084FC", "#A78BFA"];
-    const ACCENT_A = { r: 171, g: 59, b: 255 };
-    const ACCENT_B = { r: 253, g: 128, b: 255 };
-    const LOGO_SIZE = 64;
-    const DUST_MAX = 100;
-    function buildField() {
-      field.length = 0;
-      const spacing = Math.max(22, Math.min(34, Math.floor(width / 42)));
+    function buildDots() {
+      spacing = Math.max(4, Math.min(6, Math.round(width / 280)));
+      const next: Dot[] = [];
       const cols = Math.ceil(width / spacing) + 2;
       const rows = Math.ceil(height / spacing) + 2;
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
-          // Keep most of the grid — readable GitLab-style pixel dust
-          if (Math.random() > 0.72) continue;
-          const x = col * spacing + (Math.random() - 0.5) * spacing * 0.55;
-          const y = row * spacing + (Math.random() - 0.5) * spacing * 0.55;
-          field.push({
+          const x = col * spacing;
+          const y = row * spacing;
+          next.push({
             x,
             y,
             ox: x,
             oy: y,
-            size: 1.8 + Math.random() * 2.8,
             phase: Math.random() * Math.PI * 2,
-            speed: 0.4 + Math.random() * 1.1,
-            drift: 6 + Math.random() * 14,
-            color: COLORS[(Math.random() * COLORS.length) | 0],
-            baseAlpha: 0.28 + Math.random() * 0.4,
+            // Which density “band/cell” — varies by coarse grid like GitLab sectors
+            band: ((col / 18) | 0) + ((row / 14) | 0) * 3,
           });
         }
       }
+      dots = next;
     }
 
     function resize() {
@@ -115,227 +80,142 @@ export default function InteractiveBackground() {
       canvas!.style.width = `${width}px`;
       canvas!.style.height = `${height}px`;
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-      buildField();
-
-      if (!hasPointer) {
-        targetX = width * 0.62;
-        targetY = height * 0.42;
-        pointerX = targetX;
-        pointerY = targetY;
-        prevX = targetX;
-        prevY = targetY;
-      }
+      buildDots();
     }
 
     function onPointerMove(e: PointerEvent) {
       if (e.pointerType === "touch") return;
       hasPointer = true;
-      lastMoveAt = performance.now();
       targetX = e.clientX;
       targetY = e.clientY;
     }
 
-    function drawOrb(
-      cx: number,
-      cy: number,
-      radius: number,
-      color: { r: number; g: number; b: number },
-      alpha: number,
-    ) {
-      const gradient = ctx!.createRadialGradient(cx, cy, 0, cx, cy, radius);
-      gradient.addColorStop(0, `rgba(${color.r},${color.g},${color.b},${alpha})`);
-      gradient.addColorStop(
-        0.45,
-        `rgba(${color.r},${color.g},${color.b},${alpha * 0.32})`,
-      );
-      gradient.addColorStop(1, `rgba(${color.r},${color.g},${color.b},0)`);
-      ctx!.fillStyle = gradient;
-      ctx!.beginPath();
-      ctx!.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx!.fill();
+    function onPointerLeave() {
+      hasPointer = false;
+      targetX = -9999;
+      targetY = -9999;
     }
 
-    function drawPixelLogo(
-      x: number,
-      y: number,
-      size: number,
-      pixelSize: number,
-      alpha: number,
-    ) {
-      if (!logoReady || !pixelCtx || alpha <= 0.02) return;
-
-      const px = Math.max(2, Math.round(pixelSize));
-      const cells = Math.max(4, Math.round(size / px));
-      pixelBuf.width = cells;
-      pixelBuf.height = cells;
-      pixelCtx.clearRect(0, 0, cells, cells);
-      pixelCtx.imageSmoothingEnabled = true;
-      pixelCtx.drawImage(logo, 0, 0, cells, cells);
-
-      const sample = pixelCtx.getImageData(0, 0, cells, cells).data;
-      const cell = size / cells;
-      ctx!.save();
-      ctx!.imageSmoothingEnabled = false;
-      for (let row = 0; row < cells; row++) {
-        for (let col = 0; col < cells; col++) {
-          const i = (row * cells + col) * 4;
-          const a = sample[i + 3] / 255;
-          if (a < 0.18) continue;
-          ctx!.globalAlpha = Math.min(1, alpha * (0.6 + a * 0.4));
-          ctx!.fillStyle = `rgb(${sample[i]},${sample[i + 1]},${sample[i + 2]})`;
-          ctx!.fillRect(
-            x - size / 2 + col * cell,
-            y - size / 2 + row * cell,
-            Math.ceil(cell) + 0.6,
-            Math.ceil(cell) + 0.6,
-          );
-        }
-      }
-      ctx!.restore();
+    // Cheap value-noise-ish field for continuous cloud motion
+    function fieldNoise(x: number, y: number, t: number) {
+      const n1 = Math.sin(x * 0.0042 + t * 0.31) * Math.cos(y * 0.0036 - t * 0.27);
+      const n2 = Math.sin((x + y) * 0.0028 - t * 0.19) * 0.65;
+      const n3 = Math.cos(x * 0.0015 - y * 0.0021 + t * 0.14) * 0.45;
+      return (n1 + n2 + n3) / 2.1;
     }
 
-    function spawnDust(x: number, y: number, speed: number) {
-      const count = Math.min(7, 2 + Math.floor(speed / 10));
-      for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const mag = 0.35 + Math.random() * (0.7 + speed * 0.035);
-        dust.push({
-          x: x + (Math.random() - 0.5) * 16,
-          y: y + (Math.random() - 0.5) * 16,
-          vx: Math.cos(angle) * mag,
-          vy: Math.sin(angle) * mag,
-          life: 1,
-          size: 2 + Math.random() * (2.5 + Math.min(5, speed * 0.06)),
-          color: COLORS[(Math.random() * COLORS.length) | 0],
-        });
-      }
-      while (dust.length > DUST_MAX) dust.shift();
-    }
-
-    function frame(now: number) {
-      time += 0.012;
-
-      const ease = hasPointer ? 0.28 : 0.05;
-      pointerX += (targetX - pointerX) * ease;
-      pointerY += (targetY - pointerY) * ease;
-
-      const fromX = prevX;
-      const fromY = prevY;
-      const dx = pointerX - fromX;
-      const dy = pointerY - fromY;
-      const instant = Math.hypot(dx, dy);
-      velocity += (instant - velocity) * 0.28;
-      prevX = pointerX;
-      prevY = pointerY;
-
-      // Still "moving" briefly after the last pointer event so fade-out isn't jumpy
-      moving = hasPointer && (instant > 0.3 || now - lastMoveAt < 120);
-      if (moving) {
-        idleMs = 0;
-        // Fade in on first / continued movement
-        cursorAlpha += (1 - cursorAlpha) * 0.22;
-      } else {
-        idleMs += 16;
-        if (idleMs > 180) {
-          // Hold briefly, then fade out when the pointer rests
-          cursorAlpha += (0 - cursorAlpha) * 0.08;
-        }
-        if (cursorAlpha < 0.02) cursorAlpha = 0;
-      }
-
-      if (!reduceMotion && moving && instant > 0.2) {
-        const steps = Math.min(5, 1 + Math.floor(instant / 14));
-        for (let s = 1; s <= steps; s++) {
-          const t = s / steps;
-          spawnDust(fromX + dx * t, fromY + dy * t, velocity);
-        }
-      }
-
-      for (const p of dust) {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vx *= 0.96;
-        p.vy *= 0.96;
-        p.life -= 0.022;
-      }
-      while (dust.length && dust[0].life <= 0) dust.shift();
+    function frame() {
+      time += reduceMotion ? 0 : 0.016;
+      pointerX += (targetX - pointerX) * 0.18;
+      pointerY += (targetY - pointerY) * 0.18;
 
       ctx!.clearRect(0, 0, width, height);
 
-      const driftX = Math.sin(time * 0.35) * 24;
-      const driftY = Math.cos(time * 0.28) * 18;
-      const followX = hasPointer ? (pointerX - width / 2) * 0.03 : 0;
-      const followY = hasPointer ? (pointerY - height / 2) * 0.03 : 0;
-
-      drawOrb(
-        width * 0.75 + driftX + followX,
-        height * 0.28 + driftY + followY,
-        Math.max(width, height) * 0.4,
-        ACCENT_A,
-        0.12,
+      // Soft vignette wash (matches GitLab dither-field radial)
+      const wash = ctx!.createRadialGradient(
+        width * 0.5,
+        height * 0.45,
+        0,
+        width * 0.5,
+        height * 0.45,
+        Math.max(width, height) * 0.7,
       );
-      drawOrb(
-        width * 0.22 - driftX * 0.6 + followX,
-        height * 0.72 - driftY * 0.6 + followY,
-        Math.max(width, height) * 0.34,
-        ACCENT_B,
-        0.1,
+      wash.addColorStop(0, "rgba(255,255,255,0.045)");
+      wash.addColorStop(0.55, "rgba(255,255,255,0)");
+      ctx!.fillStyle = wash;
+      ctx!.fillRect(0, 0, width, height);
+
+      // Brand-tinted ambient glow pockets
+      const g1 = ctx!.createRadialGradient(
+        width * 0.78,
+        height * 0.3,
+        0,
+        width * 0.78,
+        height * 0.3,
+        Math.max(width, height) * 0.35,
       );
+      g1.addColorStop(0, "rgba(171,59,255,0.10)");
+      g1.addColorStop(1, "rgba(171,59,255,0)");
+      ctx!.fillStyle = g1;
+      ctx!.fillRect(0, 0, width, height);
 
-      // Ambient moving pixel field (GitLab-like)
-      for (const pixel of field) {
-        const twinkle =
-          0.55 +
-          0.45 *
-            Math.sin(time * pixel.speed + pixel.phase) *
-            Math.sin(time * 0.7 + pixel.phase * 0.5);
-        if (!reduceMotion) {
-          pixel.x =
-            pixel.ox +
-            Math.sin(time * pixel.speed * 0.55 + pixel.phase) * pixel.drift;
-          pixel.y =
-            pixel.oy +
-            Math.cos(time * pixel.speed * 0.4 + pixel.phase * 1.3) *
-              pixel.drift *
-              0.7;
-        }
+      const g2 = ctx!.createRadialGradient(
+        width * 0.2,
+        height * 0.75,
+        0,
+        width * 0.2,
+        height * 0.75,
+        Math.max(width, height) * 0.3,
+      );
+      g2.addColorStop(0, "rgba(253,128,255,0.08)");
+      g2.addColorStop(1, "rgba(253,128,255,0)");
+      ctx!.fillStyle = g2;
+      ctx!.fillRect(0, 0, width, height);
 
-        // Slight brighten near cursor
-        let near = 0;
-        if (hasPointer) {
-          const dist = Math.hypot(pixel.x - pointerX, pixel.y - pointerY);
-          near = Math.max(0, 1 - dist / 180);
-        }
-
-        const alpha = pixel.baseAlpha * twinkle * (0.85 + near * 0.85);
-        const size = pixel.size * (0.9 + near * 0.8 + twinkle * 0.2);
-        ctx!.globalAlpha = Math.min(0.85, alpha);
-        ctx!.fillStyle = pixel.color;
-        ctx!.fillRect(pixel.x - size / 2, pixel.y - size / 2, size, size);
+      // Column rules like GitLab hero (3-column feel)
+      ctx!.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx!.lineWidth = 1;
+      for (let i = 1; i < 3; i++) {
+        const x = (width / 3) * i;
+        ctx!.beginPath();
+        ctx!.moveTo(x, 0);
+        ctx!.lineTo(x, height);
+        ctx!.stroke();
       }
-      ctx!.globalAlpha = 1;
 
-      // Motion dust from the logo cursor
-      for (const p of dust) {
-        ctx!.globalAlpha = Math.max(0, p.life) * cursorAlpha * 0.95;
-        ctx!.fillStyle = p.color;
-        const s = p.size * (0.55 + p.life * 0.45);
-        ctx!.fillRect(p.x - s / 2, p.y - s / 2, s, s);
-      }
-      ctx!.globalAlpha = 1;
+      const influence = Math.min(width, height) * 0.16;
+      const r = Math.max(0.7, spacing * 0.18);
 
-      // Logo cursor: fade in on move, stay pixelated while visible, fade out when idle
-      if (logoReady && cursorAlpha > 0.02) {
-        const pixelAmount = reduceMotion
-          ? 4
-          : 5 + Math.min(14, 4 + velocity * 0.55);
-        drawPixelLogo(
-          pointerX,
-          pointerY,
-          LOGO_SIZE,
-          pixelAmount,
-          cursorAlpha,
+      for (const dot of dots) {
+        // Continuous cloud density — animates forever without mouse
+        const cloud = fieldNoise(dot.ox, dot.oy, time);
+        const bandWave =
+          Math.sin(time * 0.22 + dot.band * 0.85 + dot.phase * 0.2) * 0.25;
+        let density = 0.22 + cloud * 0.55 + bandWave;
+
+        // Sector masks (GitLab-like uneven blobs of density)
+        const mx = dot.ox / width;
+        const my = dot.oy / height;
+        const blobA = Math.exp(
+          -(((mx - 0.22) * 2.2) ** 2 + ((my - 0.22) * 1.7) ** 2) * 2.2,
         );
+        const blobB = Math.exp(
+          -(((mx - 0.78) * 2.4) ** 2 + ((my - 0.44) * 2.0) ** 2) * 2.4,
+        );
+        const blobC = Math.exp(
+          -(((mx - 0.46) * 1.8) ** 2 + ((my - 0.86) * 2.3) ** 2) * 2.1,
+        );
+        density *= 0.35 + blobA * 0.9 + blobB * 0.75 + blobC * 0.8;
+
+        // Cursor swell — denser / brighter near pointer
+        if (hasPointer) {
+          const dx = dot.ox - pointerX;
+          const dy = dot.oy - pointerY;
+          const dist = Math.hypot(dx, dy);
+          const near = Math.max(0, 1 - dist / influence);
+          density += near * near * 0.95;
+          // Tiny pull toward cursor (subtle, not a particle trail)
+          if (!reduceMotion && near > 0) {
+            dot.x = dot.ox + (dx / (dist || 1)) * -near * 2.2;
+            dot.y = dot.oy + (dy / (dist || 1)) * -near * 2.2;
+          } else {
+            dot.x = dot.ox;
+            dot.y = dot.oy;
+          }
+        } else {
+          dot.x = dot.ox;
+          dot.y = dot.oy;
+        }
+
+        density = Math.max(0, Math.min(1.35, density));
+        if (density < 0.08) continue;
+
+        const alpha = Math.min(0.72, 0.1 + density * 0.5);
+        const size = r * (0.7 + density * 1.1);
+        ctx!.fillStyle = `rgba(${DOT_RGB.r},${DOT_RGB.g},${DOT_RGB.b},${alpha})`;
+        ctx!.beginPath();
+        ctx!.arc(dot.x, dot.y, size, 0, Math.PI * 2);
+        ctx!.fill();
       }
 
       if (!reduceMotion) {
@@ -344,11 +224,16 @@ export default function InteractiveBackground() {
     }
 
     resize();
+    // Start pointer offscreen until first move
+    pointerX = width * 0.5;
+    pointerY = height * 0.5;
+
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointerleave", onPointerLeave);
 
     if (reduceMotion) {
-      frame(performance.now());
+      frame();
     } else {
       raf = requestAnimationFrame(frame);
     }
@@ -357,6 +242,7 @@ export default function InteractiveBackground() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerleave", onPointerLeave);
     };
   }, []);
 
