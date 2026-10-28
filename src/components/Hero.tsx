@@ -5,7 +5,10 @@ import InteractiveBackground from "./InteractiveBackground";
 
 export default function Hero() {
   return (
-    <section className="hero-stage relative isolate flex min-h-dvh flex-col overflow-hidden bg-base text-ink">
+    <section
+      className="hero-stage relative isolate flex min-h-dvh flex-col overflow-hidden bg-base text-ink"
+      style={{ cursor: "none" }}
+    >
       <InteractiveBackground />
 
       <div

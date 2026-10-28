@@ -112,19 +112,19 @@ body {
 
 /* Logo canvas is the pointer; hide the system cursor on the hero */
 .hero-stage,
-.hero-stage a,
-.hero-stage button {
-  cursor: none;
+.hero-stage * {
+  cursor: none !important;
 }
 
 @media (pointer: coarse) {
-  .hero-stage {
-    cursor: auto;
+  .hero-stage,
+  .hero-stage * {
+    cursor: auto !important;
   }
 
   .hero-stage a,
   .hero-stage button {
-    cursor: pointer;
+    cursor: pointer !important;
   }
 }
 

@@ -54,8 +54,8 @@ export default function InteractiveBackground() {
 
     const ACCENT_A = { r: 171, g: 59, b: 255 };
     const ACCENT_B = { r: 253, g: 128, b: 255 };
-    const LOGO_SIZE = 64;
-    const TRAIL_MAX = 36;
+    const LOGO_SIZE = 72;
+    const TRAIL_MAX = 48;
 
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -144,31 +144,33 @@ export default function InteractiveBackground() {
       pointerX += (targetX - pointerX) * ease;
       pointerY += (targetY - pointerY) * ease;
 
-      const dx = pointerX - prevX;
-      const dy = pointerY - prevY;
+      const fromX = prevX;
+      const fromY = prevY;
+      const dx = pointerX - fromX;
+      const dy = pointerY - fromY;
       const instant = Math.hypot(dx, dy);
       velocity += (instant - velocity) * 0.28;
       prevX = pointerX;
       prevY = pointerY;
 
-      if (!reduceMotion && hasPointer && instant > 0.35) {
-        // Densify trail on fast moves so the tail reads clearly
-        const steps = Math.min(4, 1 + Math.floor(instant / 18));
+      if (!reduceMotion && hasPointer && instant > 0.25) {
+        // Densify trail on fast moves so the pixelated tail reads clearly
+        const steps = Math.min(6, 1 + Math.floor(instant / 12));
         for (let s = 1; s <= steps; s++) {
           const t = s / steps;
           trail.push({
-            x: prevX + dx * t,
-            y: prevY + dy * t,
+            x: fromX + dx * t,
+            y: fromY + dy * t,
             life: 1,
-            pixel: 1.5 + Math.min(16, velocity * 0.65),
+            pixel: 2 + Math.min(20, velocity * 0.85),
           });
         }
         while (trail.length > TRAIL_MAX) trail.shift();
       }
 
       for (const point of trail) {
-        point.life -= 0.024;
-        point.pixel += 0.22;
+        point.life -= 0.018;
+        point.pixel += 0.35;
       }
       while (trail.length && trail[0].life <= 0) trail.shift();
 
@@ -207,8 +209,8 @@ export default function InteractiveBackground() {
       for (let i = 0; i < trail.length; i++) {
         const point = trail[i];
         const t = i / Math.max(trail.length - 1, 1);
-        const size = LOGO_SIZE * (0.4 + t * 0.45);
-        const alpha = point.life * (0.18 + t * 0.45);
+        const size = LOGO_SIZE * (0.55 + t * 0.4);
+        const alpha = point.life * (0.28 + t * 0.5);
         drawPixelLogo(point.x, point.y, size, point.pixel, alpha);
       }
 
@@ -217,9 +219,9 @@ export default function InteractiveBackground() {
         const headPixel = reduceMotion
           ? 1
           : hasPointer
-            ? 1 + Math.min(12, velocity * 0.5)
+            ? 1 + Math.min(14, velocity * 0.6)
             : 1;
-        const headAlpha = hasPointer ? 1 : 0.45;
+        const headAlpha = hasPointer ? 1 : 0.5;
         drawPixelLogo(pointerX, pointerY, LOGO_SIZE, headPixel, headAlpha);
       }
 
