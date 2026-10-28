@@ -9,8 +9,19 @@ type TrailPoint = {
   pixel: number;
 };
 
+type Dust = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  size: number;
+  color: string;
+};
+
 /**
- * Soft atmospheric field + logo cursor with a pixelating motion tail.
+ * Soft atmosphere + logo cursor that pixelates in motion and leaves
+ * a digital dust / pixel tail (transparent-PNG-safe).
  */
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -40,6 +51,7 @@ export default function InteractiveBackground() {
     let time = 0;
     let hasPointer = false;
     const trail: TrailPoint[] = [];
+    const dust: Dust[] = [];
 
     const logo = new Image();
     logo.decoding = "async";
@@ -52,10 +64,12 @@ export default function InteractiveBackground() {
     const pixelBuf = document.createElement("canvas");
     const pixelCtx = pixelBuf.getContext("2d");
 
+    const COLORS = ["#AB3BFF", "#D15BFF", "#FD80FF", "#C084FC"];
     const ACCENT_A = { r: 171, g: 59, b: 255 };
     const ACCENT_B = { r: 253, g: 128, b: 255 };
-    const LOGO_SIZE = 72;
-    const TRAIL_MAX = 48;
+    const LOGO_SIZE = 68;
+    const TRAIL_MAX = 40;
+    const DUST_MAX = 120;
 
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -78,7 +92,6 @@ export default function InteractiveBackground() {
     }
 
     function onPointerMove(e: PointerEvent) {
-      // Touch keeps the native finger affordance; mouse/pen drive the logo cursor
       if (e.pointerType === "touch") return;
       hasPointer = true;
       targetX = e.clientX;
@@ -112,7 +125,7 @@ export default function InteractiveBackground() {
       pixelSize: number,
       alpha: number,
     ) {
-      if (!logoReady || !pixelCtx || alpha <= 0.01) return;
+      if (!logoReady || !pixelCtx || alpha <= 0.02) return;
 
       const px = Math.max(1, Math.round(pixelSize));
       ctx!.save();
@@ -125,22 +138,57 @@ export default function InteractiveBackground() {
         return;
       }
 
-      const cells = Math.max(3, Math.round(size / px));
+      const cells = Math.max(4, Math.round(size / px));
       pixelBuf.width = cells;
       pixelBuf.height = cells;
       pixelCtx.clearRect(0, 0, cells, cells);
       pixelCtx.imageSmoothingEnabled = true;
       pixelCtx.drawImage(logo, 0, 0, cells, cells);
 
+      // Rebuild opaque mosaic so transparency does not wash the trail out
+      const sample = pixelCtx.getImageData(0, 0, cells, cells).data;
+      const cell = size / cells;
       ctx!.imageSmoothingEnabled = false;
-      ctx!.drawImage(pixelBuf, x - size / 2, y - size / 2, size, size);
+      for (let row = 0; row < cells; row++) {
+        for (let col = 0; col < cells; col++) {
+          const i = (row * cells + col) * 4;
+          const a = sample[i + 3] / 255;
+          if (a < 0.2) continue;
+          ctx!.globalAlpha = Math.min(1, alpha * (0.55 + a * 0.45));
+          ctx!.fillStyle = `rgb(${sample[i]},${sample[i + 1]},${sample[i + 2]})`;
+          ctx!.fillRect(
+            x - size / 2 + col * cell,
+            y - size / 2 + row * cell,
+            Math.ceil(cell) + 0.5,
+            Math.ceil(cell) + 0.5,
+          );
+        }
+      }
       ctx!.restore();
+    }
+
+    function spawnDust(x: number, y: number, speed: number) {
+      const count = Math.min(8, 2 + Math.floor(speed / 8));
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const mag = 0.4 + Math.random() * (0.8 + speed * 0.04);
+        dust.push({
+          x: x + (Math.random() - 0.5) * 18,
+          y: y + (Math.random() - 0.5) * 18,
+          vx: Math.cos(angle) * mag,
+          vy: Math.sin(angle) * mag,
+          life: 1,
+          size: 2 + Math.random() * (3 + Math.min(6, speed * 0.08)),
+          color: COLORS[(Math.random() * COLORS.length) | 0],
+        });
+      }
+      while (dust.length > DUST_MAX) dust.shift();
     }
 
     function frame() {
       time += 0.012;
 
-      const ease = hasPointer ? 0.28 : 0.05;
+      const ease = hasPointer ? 0.3 : 0.05;
       pointerX += (targetX - pointerX) * ease;
       pointerY += (targetY - pointerY) * ease;
 
@@ -149,30 +197,41 @@ export default function InteractiveBackground() {
       const dx = pointerX - fromX;
       const dy = pointerY - fromY;
       const instant = Math.hypot(dx, dy);
-      velocity += (instant - velocity) * 0.28;
+      velocity += (instant - velocity) * 0.3;
       prevX = pointerX;
       prevY = pointerY;
 
-      if (!reduceMotion && hasPointer && instant > 0.25) {
-        // Densify trail on fast moves so the pixelated tail reads clearly
-        const steps = Math.min(6, 1 + Math.floor(instant / 12));
+      if (!reduceMotion && hasPointer && instant > 0.2) {
+        const steps = Math.min(7, 1 + Math.floor(instant / 10));
         for (let s = 1; s <= steps; s++) {
           const t = s / steps;
+          const x = fromX + dx * t;
+          const y = fromY + dy * t;
           trail.push({
-            x: fromX + dx * t,
-            y: fromY + dy * t,
+            x,
+            y,
             life: 1,
-            pixel: 2 + Math.min(20, velocity * 0.85),
+            pixel: 3 + Math.min(22, velocity * 0.9),
           });
+          spawnDust(x, y, velocity);
         }
         while (trail.length > TRAIL_MAX) trail.shift();
       }
 
       for (const point of trail) {
-        point.life -= 0.018;
-        point.pixel += 0.35;
+        point.life -= 0.016;
+        point.pixel += 0.4;
       }
       while (trail.length && trail[0].life <= 0) trail.shift();
+
+      for (const p of dust) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        p.life -= 0.02;
+      }
+      while (dust.length && dust[0].life <= 0) dust.shift();
 
       ctx!.clearRect(0, 0, width, height);
 
@@ -186,43 +245,57 @@ export default function InteractiveBackground() {
         height * 0.28 + driftY + followY,
         Math.max(width, height) * 0.42,
         ACCENT_A,
-        0.15,
+        0.14,
       );
       drawOrb(
         width * 0.22 - driftX * 0.6 + followX,
         height * 0.72 - driftY * 0.6 + followY,
         Math.max(width, height) * 0.36,
         ACCENT_B,
-        0.13,
+        0.12,
       );
 
       if (hasPointer) {
         drawOrb(
           pointerX,
           pointerY,
-          110 + velocity * 2.2,
+          100 + velocity * 2,
           ACCENT_B,
-          0.1 + Math.min(0.16, velocity * 0.008),
+          0.12 + Math.min(0.14, velocity * 0.006),
         );
       }
 
+      // Pixel dust tail (opaque squares)
+      for (const p of dust) {
+        ctx!.globalAlpha = Math.max(0, p.life) * 0.9;
+        ctx!.fillStyle = p.color;
+        const s = p.size * (0.6 + p.life * 0.4);
+        ctx!.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+      }
+      ctx!.globalAlpha = 1;
+
+      // Pixelated logo ghosts along the path
       for (let i = 0; i < trail.length; i++) {
         const point = trail[i];
         const t = i / Math.max(trail.length - 1, 1);
-        const size = LOGO_SIZE * (0.55 + t * 0.4);
-        const alpha = point.life * (0.28 + t * 0.5);
+        const size = LOGO_SIZE * (0.5 + t * 0.4);
+        const alpha = point.life * (0.35 + t * 0.45);
         drawPixelLogo(point.x, point.y, size, point.pixel, alpha);
       }
 
-      // Idle mark before first move; live cursor after
       if (logoReady) {
         const headPixel = reduceMotion
           ? 1
           : hasPointer
-            ? 1 + Math.min(14, velocity * 0.6)
+            ? 1 + Math.min(16, velocity * 0.7)
             : 1;
-        const headAlpha = hasPointer ? 1 : 0.5;
-        drawPixelLogo(pointerX, pointerY, LOGO_SIZE, headPixel, headAlpha);
+        drawPixelLogo(
+          pointerX,
+          pointerY,
+          LOGO_SIZE,
+          headPixel,
+          hasPointer ? 1 : 0.5,
+        );
       }
 
       if (!reduceMotion) {
