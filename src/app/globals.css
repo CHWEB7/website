@@ -110,24 +110,6 @@ body {
   outline-offset: 3px;
 }
 
-/* Logo canvas is the pointer; hide the system cursor on the hero */
-.hero-stage,
-.hero-stage * {
-  cursor: none !important;
-}
-
-@media (pointer: coarse) {
-  .hero-stage,
-  .hero-stage * {
-    cursor: auto !important;
-  }
-
-  .hero-stage a,
-  .hero-stage button {
-    cursor: pointer !important;
-  }
-}
-
 .hero-enter {
   animation: hero-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -144,15 +126,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-stage {
-    cursor: auto;
-  }
-
-  .hero-stage a,
-  .hero-stage button {
-    cursor: pointer;
-  }
-
   .hero-enter {
     animation: none;
   }
