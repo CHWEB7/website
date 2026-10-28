@@ -5,12 +5,12 @@ import InteractiveBackground from "./InteractiveBackground";
 
 export default function Hero() {
   return (
-    <section className="relative isolate flex min-h-dvh flex-col overflow-hidden bg-base text-ink">
+    <section className="hero-stage relative isolate flex min-h-dvh flex-col overflow-hidden bg-base text-ink">
       <InteractiveBackground />
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(26,24,38,0.35)_55%,rgba(26,24,38,0.92)_100%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(26,24,38,0.28)_50%,rgba(26,24,38,0.88)_100%)]"
       />
       <div
         aria-hidden="true"
@@ -18,7 +18,11 @@ export default function Hero() {
       />
 
       <header className="relative z-10 px-5 pt-5 sm:px-8 sm:pt-7">
-        <a href="/" className="inline-flex items-center" aria-label="Voltron Digital home">
+        <a
+          href="/"
+          className="inline-flex cursor-pointer items-center"
+          aria-label="Voltron Digital home"
+        >
           <Image
             src="/logo.png"
             alt="Voltron Digital"

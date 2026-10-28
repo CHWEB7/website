@@ -2,19 +2,16 @@
 
 import { useEffect, useRef } from "react";
 
-type Node = {
+type TrailPoint = {
   x: number;
   y: number;
-  ox: number;
-  oy: number;
-  vx: number;
-  vy: number;
-  r: number;
+  life: number;
+  pixel: number;
 };
 
 /**
- * GitLab-inspired interactive field: soft gradient orbs + a geometric
- * node mesh that drifts toward the cursor with eased parallax.
+ * Soft atmospheric field + logo cursor with a pixelating motion tail.
+ * Inspired by premium interactive heroes (e.g. about.gitlab.com motion language).
  */
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,20 +26,37 @@ export default function InteractiveBackground() {
     const reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
+    const finePointer = window.matchMedia("(pointer: fine)").matches;
 
     let width = 0;
     let height = 0;
     let dpr = 1;
-    let nodes: Node[] = [];
     let raf = 0;
-    let pointerX = 0.5;
-    let pointerY = 0.5;
-    let targetX = 0.5;
-    let targetY = 0.5;
+    let pointerX = width * 0.55 || 0;
+    let pointerY = height * 0.4 || 0;
+    let targetX = pointerX;
+    let targetY = pointerY;
+    let prevX = pointerX;
+    let prevY = pointerY;
+    let velocity = 0;
     let time = 0;
+    let active = false;
+    const trail: TrailPoint[] = [];
+
+    const logo = new Image();
+    logo.src = "/logo.png";
+    let logoReady = false;
+    logo.onload = () => {
+      logoReady = true;
+    };
+
+    const pixelBuf = document.createElement("canvas");
+    const pixelCtx = pixelBuf.getContext("2d", { willReadFrequently: false });
 
     const ACCENT_A = { r: 171, g: 59, b: 255 };
     const ACCENT_B = { r: 253, g: 128, b: 255 };
+    const LOGO_SIZE = 56;
+    const TRAIL_MAX = 28;
 
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -53,42 +67,26 @@ export default function InteractiveBackground() {
       canvas!.style.width = `${width}px`;
       canvas!.style.height = `${height}px`;
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-      buildNodes();
-    }
 
-    function buildNodes() {
-      const spacing = Math.max(48, Math.min(72, Math.floor(width / 20)));
-      const cols = Math.ceil(width / spacing) + 1;
-      const rows = Math.ceil(height / spacing) + 1;
-      const next: Node[] = [];
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const jitterX = (Math.random() - 0.5) * spacing * 0.4;
-          const jitterY = (Math.random() - 0.5) * spacing * 0.4;
-          const x = col * spacing + jitterX;
-          const y = row * spacing + jitterY;
-          next.push({
-            x,
-            y,
-            ox: x,
-            oy: y,
-            vx: 0,
-            vy: 0,
-            r: 1.4 + Math.random() * 1.8,
-          });
-        }
+      if (!active) {
+        targetX = width * 0.62;
+        targetY = height * 0.42;
+        pointerX = targetX;
+        pointerY = targetY;
+        prevX = targetX;
+        prevY = targetY;
       }
-      nodes = next;
     }
 
     function onPointerMove(e: PointerEvent) {
-      targetX = e.clientX / Math.max(width, 1);
-      targetY = e.clientY / Math.max(height, 1);
+      if (!finePointer) return;
+      active = true;
+      targetX = e.clientX;
+      targetY = e.clientY;
     }
 
     function onPointerLeave() {
-      targetX = 0.5;
-      targetY = 0.5;
+      active = false;
     }
 
     function drawOrb(
@@ -101,8 +99,8 @@ export default function InteractiveBackground() {
       const gradient = ctx!.createRadialGradient(cx, cy, 0, cx, cy, radius);
       gradient.addColorStop(0, `rgba(${color.r},${color.g},${color.b},${alpha})`);
       gradient.addColorStop(
-        0.4,
-        `rgba(${color.r},${color.g},${color.b},${alpha * 0.4})`,
+        0.45,
+        `rgba(${color.r},${color.g},${color.b},${alpha * 0.32})`,
       );
       gradient.addColorStop(1, `rgba(${color.r},${color.g},${color.b},0)`);
       ctx!.fillStyle = gradient;
@@ -111,99 +109,116 @@ export default function InteractiveBackground() {
       ctx!.fill();
     }
 
+    function drawPixelLogo(
+      x: number,
+      y: number,
+      size: number,
+      pixelSize: number,
+      alpha: number,
+    ) {
+      if (!logoReady || !pixelCtx || alpha <= 0.01) return;
+
+      const px = Math.max(1, Math.round(pixelSize));
+      ctx!.save();
+      ctx!.globalAlpha = alpha;
+
+      if (px <= 1.5) {
+        ctx!.imageSmoothingEnabled = true;
+        ctx!.drawImage(logo, x - size / 2, y - size / 2, size, size);
+        ctx!.restore();
+        return;
+      }
+
+      // Downscale then nearest-neighbor upscale = chunky pixel dissolve
+      const cells = Math.max(3, Math.round(size / px));
+      pixelBuf.width = cells;
+      pixelBuf.height = cells;
+      pixelCtx.clearRect(0, 0, cells, cells);
+      pixelCtx.imageSmoothingEnabled = true;
+      pixelCtx.drawImage(logo, 0, 0, cells, cells);
+
+      ctx!.imageSmoothingEnabled = false;
+      ctx!.drawImage(pixelBuf, x - size / 2, y - size / 2, size, size);
+      ctx!.restore();
+    }
+
     function frame() {
-      time += 0.01;
-      pointerX += (targetX - pointerX) * 0.1;
-      pointerY += (targetY - pointerY) * 0.1;
+      time += 0.012;
+
+      const ease = active ? 0.22 : 0.06;
+      pointerX += (targetX - pointerX) * ease;
+      pointerY += (targetY - pointerY) * ease;
+
+      const dx = pointerX - prevX;
+      const dy = pointerY - prevY;
+      const instant = Math.hypot(dx, dy);
+      velocity += (instant - velocity) * 0.25;
+      prevX = pointerX;
+      prevY = pointerY;
+
+      // Seed trail while moving
+      if (finePointer && !reduceMotion && instant > 0.4) {
+        const pixel = 1 + Math.min(14, velocity * 0.55);
+        trail.push({
+          x: pointerX,
+          y: pointerY,
+          life: 1,
+          pixel,
+        });
+        while (trail.length > TRAIL_MAX) trail.shift();
+      }
+
+      for (const point of trail) {
+        point.life -= 0.028;
+        point.pixel += 0.18;
+      }
+      while (trail.length && trail[0].life <= 0) trail.shift();
 
       ctx!.clearRect(0, 0, width, height);
 
-      const px = pointerX * width;
-      const py = pointerY * height;
-      const parallaxX = (pointerX - 0.5) * 120;
-      const parallaxY = (pointerY - 0.5) * 90;
+      // Quiet atmosphere — no geometric mesh
+      const driftX = Math.sin(time * 0.35) * 30;
+      const driftY = Math.cos(time * 0.28) * 24;
+      const followX = finePointer ? (pointerX - width / 2) * 0.04 : 0;
+      const followY = finePointer ? (pointerY - height / 2) * 0.04 : 0;
 
-      // Ambient orbs — clearly shift with the cursor
       drawOrb(
-        width * 0.72 + parallaxX * 0.85,
-        height * 0.26 + parallaxY * 0.85,
-        Math.max(width, height) * 0.46,
+        width * 0.75 + driftX + followX,
+        height * 0.28 + driftY + followY,
+        Math.max(width, height) * 0.42,
         ACCENT_A,
-        0.28,
+        0.16,
       );
       drawOrb(
-        width * 0.2 + parallaxX * 1.35,
-        height * 0.7 + parallaxY * 1.35,
-        Math.max(width, height) * 0.4,
+        width * 0.22 - driftX * 0.6 + followX,
+        height * 0.72 - driftY * 0.6 + followY,
+        Math.max(width, height) * 0.36,
         ACCENT_B,
-        0.24,
+        0.14,
       );
 
-      // Cursor spotlight — strongest interactive cue
-      drawOrb(px, py, Math.min(width, height) * 0.34, ACCENT_B, 0.32);
-      drawOrb(px, py, Math.min(width, height) * 0.16, ACCENT_A, 0.4);
-
-      const influence = Math.min(width, height) * 0.42;
-      const linkDist = Math.min(width, height) * 0.13;
-
-      for (const node of nodes) {
-        const dx = px - node.ox;
-        const dy = py - node.oy;
-        const dist = Math.hypot(dx, dy) || 1;
-        const force = Math.max(0, 1 - dist / influence);
-        const pull = force * force * 56;
-        const tx =
-          node.ox +
-          (dx / dist) * pull +
-          Math.sin(time + node.ox * 0.012) * 2.2;
-        const ty =
-          node.oy +
-          (dy / dist) * pull +
-          Math.cos(time + node.oy * 0.012) * 2.2;
-        node.vx += (tx - node.x) * 0.12;
-        node.vy += (ty - node.y) * 0.12;
-        node.vx *= 0.78;
-        node.vy *= 0.78;
-        node.x += node.vx;
-        node.y += node.vy;
+      // Soft bloom under the living cursor
+      if (finePointer) {
+        const bloom = 0.1 + Math.min(0.18, velocity * 0.01);
+        drawOrb(pointerX, pointerY, 120 + velocity * 2, ACCENT_B, bloom);
       }
 
-      for (let i = 0; i < nodes.length; i++) {
-        const a = nodes[i];
-        for (let j = i + 1; j < nodes.length; j++) {
-          const b = nodes[j];
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist > linkDist) continue;
-          const midDist = Math.hypot((a.x + b.x) / 2 - px, (a.y + b.y) / 2 - py);
-          const near = Math.max(0, 1 - midDist / (influence * 1.15));
-          const alpha = (1 - dist / linkDist) * (0.12 + near * 0.55);
-          const t = (a.x + b.x) / (2 * width);
-          const r = Math.round(ACCENT_A.r + (ACCENT_B.r - ACCENT_A.r) * t);
-          const g = Math.round(ACCENT_A.g + (ACCENT_B.g - ACCENT_A.g) * t);
-          const bl = Math.round(ACCENT_A.b + (ACCENT_B.b - ACCENT_A.b) * t);
-          ctx!.strokeStyle = `rgba(${r},${g},${bl},${alpha})`;
-          ctx!.lineWidth = 1 + near * 0.8;
-          ctx!.beginPath();
-          ctx!.moveTo(a.x, a.y);
-          ctx!.lineTo(b.x, b.y);
-          ctx!.stroke();
-        }
+      // Tail: oldest (most pixelated) first
+      for (let i = 0; i < trail.length; i++) {
+        const point = trail[i];
+        const t = i / Math.max(trail.length - 1, 1);
+        const size = LOGO_SIZE * (0.45 + t * 0.35);
+        const alpha = point.life * (0.15 + t * 0.35);
+        drawPixelLogo(point.x, point.y, size, point.pixel, alpha);
       }
 
-      for (const node of nodes) {
-        const dist = Math.hypot(node.x - px, node.y - py);
-        const near = Math.max(0, 1 - dist / influence);
-        const t = node.x / width;
-        const r = Math.round(ACCENT_A.r + (ACCENT_B.r - ACCENT_A.r) * t);
-        const g = Math.round(ACCENT_A.g + (ACCENT_B.g - ACCENT_A.g) * t);
-        const bl = Math.round(ACCENT_A.b + (ACCENT_B.b - ACCENT_A.b) * t);
-        const alpha = 0.3 + near * 0.7;
-        ctx!.fillStyle = `rgba(${r},${g},${bl},${alpha})`;
-        ctx!.beginPath();
-        ctx!.arc(node.x, node.y, node.r + near * 3.2, 0, Math.PI * 2);
-        ctx!.fill();
+      // Head: crisp when still, pixelates while moving
+      if (finePointer && logoReady) {
+        const headPixel = reduceMotion
+          ? 1
+          : 1 + Math.min(10, velocity * 0.42);
+        const headAlpha = active ? 0.95 : 0.55;
+        drawPixelLogo(pointerX, pointerY, LOGO_SIZE, headPixel, headAlpha);
       }
 
       if (!reduceMotion) {
@@ -212,11 +227,6 @@ export default function InteractiveBackground() {
     }
 
     resize();
-    pointerX = 0.55;
-    pointerY = 0.4;
-    targetX = 0.55;
-    targetY = 0.4;
-
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);

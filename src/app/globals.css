@@ -110,6 +110,18 @@ body {
   outline-offset: 3px;
 }
 
+/* Logo becomes the pointer on fine-pointer devices */
+@media (pointer: fine) {
+  .hero-stage {
+    cursor: none;
+  }
+
+  .hero-stage a,
+  .hero-stage button {
+    cursor: none;
+  }
+}
+
 .hero-enter {
   animation: hero-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -126,6 +138,15 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hero-stage {
+    cursor: auto;
+  }
+
+  .hero-stage a,
+  .hero-stage button {
+    cursor: pointer;
+  }
+
   .hero-enter {
     animation: none;
   }
