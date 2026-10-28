@@ -2,11 +2,17 @@
 
 import { useEffect, useRef } from "react";
 
-type TrailPoint = {
+type FieldPixel = {
   x: number;
   y: number;
-  life: number;
-  pixel: number;
+  ox: number;
+  oy: number;
+  size: number;
+  phase: number;
+  speed: number;
+  drift: number;
+  color: string;
+  baseAlpha: number;
 };
 
 type Dust = {
@@ -20,8 +26,8 @@ type Dust = {
 };
 
 /**
- * Soft atmosphere + logo cursor that pixelates in motion and leaves
- * a digital dust / pixel tail (transparent-PNG-safe).
+ * GitLab-style drifting pixel field + logo cursor that fades in while
+ * moving (pixelated), then fades out when idle.
  */
 export default function InteractiveBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,7 +56,11 @@ export default function InteractiveBackground() {
     let velocity = 0;
     let time = 0;
     let hasPointer = false;
-    const trail: TrailPoint[] = [];
+    let moving = false;
+    let idleMs = 0;
+    let cursorAlpha = 0;
+    let lastMoveAt = 0;
+    const field: FieldPixel[] = [];
     const dust: Dust[] = [];
 
     const logo = new Image();
@@ -64,12 +74,37 @@ export default function InteractiveBackground() {
     const pixelBuf = document.createElement("canvas");
     const pixelCtx = pixelBuf.getContext("2d");
 
-    const COLORS = ["#AB3BFF", "#D15BFF", "#FD80FF", "#C084FC"];
+    const COLORS = ["#AB3BFF", "#D15BFF", "#FD80FF", "#C084FC", "#A78BFA"];
     const ACCENT_A = { r: 171, g: 59, b: 255 };
     const ACCENT_B = { r: 253, g: 128, b: 255 };
-    const LOGO_SIZE = 68;
-    const TRAIL_MAX = 40;
-    const DUST_MAX = 120;
+    const LOGO_SIZE = 64;
+    const DUST_MAX = 100;
+    function buildField() {
+      field.length = 0;
+      const spacing = Math.max(28, Math.min(42, Math.floor(width / 36)));
+      const cols = Math.ceil(width / spacing) + 2;
+      const rows = Math.ceil(height / spacing) + 2;
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          // Sparse: keep ~55% of the grid so it feels like GitLab's dot field
+          if (Math.random() > 0.55) continue;
+          const x = col * spacing + (Math.random() - 0.5) * spacing * 0.5;
+          const y = row * spacing + (Math.random() - 0.5) * spacing * 0.5;
+          field.push({
+            x,
+            y,
+            ox: x,
+            oy: y,
+            size: 1.2 + Math.random() * 2.2,
+            phase: Math.random() * Math.PI * 2,
+            speed: 0.35 + Math.random() * 0.9,
+            drift: 4 + Math.random() * 10,
+            color: COLORS[(Math.random() * COLORS.length) | 0],
+            baseAlpha: 0.12 + Math.random() * 0.28,
+          });
+        }
+      }
+    }
 
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -80,6 +115,7 @@ export default function InteractiveBackground() {
       canvas!.style.width = `${width}px`;
       canvas!.style.height = `${height}px`;
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildField();
 
       if (!hasPointer) {
         targetX = width * 0.62;
@@ -94,6 +130,7 @@ export default function InteractiveBackground() {
     function onPointerMove(e: PointerEvent) {
       if (e.pointerType === "touch") return;
       hasPointer = true;
+      lastMoveAt = performance.now();
       targetX = e.clientX;
       targetY = e.clientY;
     }
@@ -127,17 +164,7 @@ export default function InteractiveBackground() {
     ) {
       if (!logoReady || !pixelCtx || alpha <= 0.02) return;
 
-      const px = Math.max(1, Math.round(pixelSize));
-      ctx!.save();
-      ctx!.globalAlpha = Math.min(1, alpha);
-
-      if (px <= 1.5) {
-        ctx!.imageSmoothingEnabled = true;
-        ctx!.drawImage(logo, x - size / 2, y - size / 2, size, size);
-        ctx!.restore();
-        return;
-      }
-
+      const px = Math.max(2, Math.round(pixelSize));
       const cells = Math.max(4, Math.round(size / px));
       pixelBuf.width = cells;
       pixelBuf.height = cells;
@@ -145,22 +172,22 @@ export default function InteractiveBackground() {
       pixelCtx.imageSmoothingEnabled = true;
       pixelCtx.drawImage(logo, 0, 0, cells, cells);
 
-      // Rebuild opaque mosaic so transparency does not wash the trail out
       const sample = pixelCtx.getImageData(0, 0, cells, cells).data;
       const cell = size / cells;
+      ctx!.save();
       ctx!.imageSmoothingEnabled = false;
       for (let row = 0; row < cells; row++) {
         for (let col = 0; col < cells; col++) {
           const i = (row * cells + col) * 4;
           const a = sample[i + 3] / 255;
-          if (a < 0.2) continue;
-          ctx!.globalAlpha = Math.min(1, alpha * (0.55 + a * 0.45));
+          if (a < 0.18) continue;
+          ctx!.globalAlpha = Math.min(1, alpha * (0.6 + a * 0.4));
           ctx!.fillStyle = `rgb(${sample[i]},${sample[i + 1]},${sample[i + 2]})`;
           ctx!.fillRect(
             x - size / 2 + col * cell,
             y - size / 2 + row * cell,
-            Math.ceil(cell) + 0.5,
-            Math.ceil(cell) + 0.5,
+            Math.ceil(cell) + 0.6,
+            Math.ceil(cell) + 0.6,
           );
         }
       }
@@ -168,27 +195,27 @@ export default function InteractiveBackground() {
     }
 
     function spawnDust(x: number, y: number, speed: number) {
-      const count = Math.min(8, 2 + Math.floor(speed / 8));
+      const count = Math.min(7, 2 + Math.floor(speed / 10));
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const mag = 0.4 + Math.random() * (0.8 + speed * 0.04);
+        const mag = 0.35 + Math.random() * (0.7 + speed * 0.035);
         dust.push({
-          x: x + (Math.random() - 0.5) * 18,
-          y: y + (Math.random() - 0.5) * 18,
+          x: x + (Math.random() - 0.5) * 16,
+          y: y + (Math.random() - 0.5) * 16,
           vx: Math.cos(angle) * mag,
           vy: Math.sin(angle) * mag,
           life: 1,
-          size: 2 + Math.random() * (3 + Math.min(6, speed * 0.08)),
+          size: 2 + Math.random() * (2.5 + Math.min(5, speed * 0.06)),
           color: COLORS[(Math.random() * COLORS.length) | 0],
         });
       }
       while (dust.length > DUST_MAX) dust.shift();
     }
 
-    function frame() {
+    function frame(now: number) {
       time += 0.012;
 
-      const ease = hasPointer ? 0.3 : 0.05;
+      const ease = hasPointer ? 0.28 : 0.05;
       pointerX += (targetX - pointerX) * ease;
       pointerY += (targetY - pointerY) * ease;
 
@@ -197,104 +224,117 @@ export default function InteractiveBackground() {
       const dx = pointerX - fromX;
       const dy = pointerY - fromY;
       const instant = Math.hypot(dx, dy);
-      velocity += (instant - velocity) * 0.3;
+      velocity += (instant - velocity) * 0.28;
       prevX = pointerX;
       prevY = pointerY;
 
-      if (!reduceMotion && hasPointer && instant > 0.2) {
-        const steps = Math.min(7, 1 + Math.floor(instant / 10));
-        for (let s = 1; s <= steps; s++) {
-          const t = s / steps;
-          const x = fromX + dx * t;
-          const y = fromY + dy * t;
-          trail.push({
-            x,
-            y,
-            life: 1,
-            pixel: 3 + Math.min(22, velocity * 0.9),
-          });
-          spawnDust(x, y, velocity);
+      // Still "moving" briefly after the last pointer event so fade-out isn't jumpy
+      moving = hasPointer && (instant > 0.3 || now - lastMoveAt < 120);
+      if (moving) {
+        idleMs = 0;
+        // Fade in on first / continued movement
+        cursorAlpha += (1 - cursorAlpha) * 0.22;
+      } else {
+        idleMs += 16;
+        if (idleMs > 180) {
+          // Hold briefly, then fade out when the pointer rests
+          cursorAlpha += (0 - cursorAlpha) * 0.08;
         }
-        while (trail.length > TRAIL_MAX) trail.shift();
+        if (cursorAlpha < 0.02) cursorAlpha = 0;
       }
 
-      for (const point of trail) {
-        point.life -= 0.016;
-        point.pixel += 0.4;
+      if (!reduceMotion && moving && instant > 0.2) {
+        const steps = Math.min(5, 1 + Math.floor(instant / 14));
+        for (let s = 1; s <= steps; s++) {
+          const t = s / steps;
+          spawnDust(fromX + dx * t, fromY + dy * t, velocity);
+        }
       }
-      while (trail.length && trail[0].life <= 0) trail.shift();
 
       for (const p of dust) {
         p.x += p.vx;
         p.y += p.vy;
         p.vx *= 0.96;
         p.vy *= 0.96;
-        p.life -= 0.02;
+        p.life -= 0.022;
       }
       while (dust.length && dust[0].life <= 0) dust.shift();
 
       ctx!.clearRect(0, 0, width, height);
 
-      const driftX = Math.sin(time * 0.35) * 28;
-      const driftY = Math.cos(time * 0.28) * 22;
-      const followX = hasPointer ? (pointerX - width / 2) * 0.035 : 0;
-      const followY = hasPointer ? (pointerY - height / 2) * 0.035 : 0;
+      const driftX = Math.sin(time * 0.35) * 24;
+      const driftY = Math.cos(time * 0.28) * 18;
+      const followX = hasPointer ? (pointerX - width / 2) * 0.03 : 0;
+      const followY = hasPointer ? (pointerY - height / 2) * 0.03 : 0;
 
       drawOrb(
         width * 0.75 + driftX + followX,
         height * 0.28 + driftY + followY,
-        Math.max(width, height) * 0.42,
+        Math.max(width, height) * 0.4,
         ACCENT_A,
-        0.14,
+        0.12,
       );
       drawOrb(
         width * 0.22 - driftX * 0.6 + followX,
         height * 0.72 - driftY * 0.6 + followY,
-        Math.max(width, height) * 0.36,
+        Math.max(width, height) * 0.34,
         ACCENT_B,
-        0.12,
+        0.1,
       );
 
-      if (hasPointer) {
-        drawOrb(
-          pointerX,
-          pointerY,
-          100 + velocity * 2,
-          ACCENT_B,
-          0.12 + Math.min(0.14, velocity * 0.006),
-        );
-      }
+      // Ambient moving pixel field (GitLab-like)
+      for (const pixel of field) {
+        const twinkle =
+          0.55 +
+          0.45 *
+            Math.sin(time * pixel.speed + pixel.phase) *
+            Math.sin(time * 0.7 + pixel.phase * 0.5);
+        if (!reduceMotion) {
+          pixel.x =
+            pixel.ox +
+            Math.sin(time * pixel.speed * 0.55 + pixel.phase) * pixel.drift;
+          pixel.y =
+            pixel.oy +
+            Math.cos(time * pixel.speed * 0.4 + pixel.phase * 1.3) *
+              pixel.drift *
+              0.7;
+        }
 
-      // Pixel dust tail (opaque squares)
+        // Slight brighten near cursor
+        let near = 0;
+        if (hasPointer) {
+          const dist = Math.hypot(pixel.x - pointerX, pixel.y - pointerY);
+          near = Math.max(0, 1 - dist / 180);
+        }
+
+        const alpha = pixel.baseAlpha * twinkle * (0.75 + near * 0.9);
+        const size = pixel.size * (0.85 + near * 0.7 + twinkle * 0.15);
+        ctx!.globalAlpha = Math.min(0.7, alpha);
+        ctx!.fillStyle = pixel.color;
+        ctx!.fillRect(pixel.x - size / 2, pixel.y - size / 2, size, size);
+      }
+      ctx!.globalAlpha = 1;
+
+      // Motion dust from the logo cursor
       for (const p of dust) {
-        ctx!.globalAlpha = Math.max(0, p.life) * 0.9;
+        ctx!.globalAlpha = Math.max(0, p.life) * cursorAlpha * 0.95;
         ctx!.fillStyle = p.color;
-        const s = p.size * (0.6 + p.life * 0.4);
+        const s = p.size * (0.55 + p.life * 0.45);
         ctx!.fillRect(p.x - s / 2, p.y - s / 2, s, s);
       }
       ctx!.globalAlpha = 1;
 
-      // Pixelated logo ghosts along the path
-      for (let i = 0; i < trail.length; i++) {
-        const point = trail[i];
-        const t = i / Math.max(trail.length - 1, 1);
-        const size = LOGO_SIZE * (0.5 + t * 0.4);
-        const alpha = point.life * (0.35 + t * 0.45);
-        drawPixelLogo(point.x, point.y, size, point.pixel, alpha);
-      }
-
-      if (logoReady) {
-        const headPixel = reduceMotion
-          ? 1
-          : hasPointer
-            ? 1 + Math.min(16, velocity * 0.7)
-            : 1;
+      // Logo cursor: fade in on move, stay pixelated while visible, fade out when idle
+      if (logoReady && cursorAlpha > 0.02) {
+        const pixelAmount = reduceMotion
+          ? 4
+          : 5 + Math.min(14, 4 + velocity * 0.55);
         drawPixelLogo(
           pointerX,
           pointerY,
           LOGO_SIZE,
-          headPixel,
-          hasPointer ? 1 : 0.5,
+          pixelAmount,
+          cursorAlpha,
         );
       }
 
@@ -308,7 +348,7 @@ export default function InteractiveBackground() {
     window.addEventListener("pointermove", onPointerMove, { passive: true });
 
     if (reduceMotion) {
-      frame();
+      frame(performance.now());
     } else {
       raf = requestAnimationFrame(frame);
     }
