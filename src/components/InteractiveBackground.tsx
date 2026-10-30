@@ -48,7 +48,7 @@ export default function InteractiveBackground() {
     let logoW = 0;
     let logoH = 0;
     // Compact mark so it reads as part of the field, not a stamp
-    const LOGO_WORLD = 64;
+    const LOGO_WORLD = 52;
 
     // Prebuilt fill styles — avoid per-dot string alloc
     const STYLES: string[] = [];

@@ -8,6 +8,9 @@
   --accent-b: #fd80ff;
   --accent-mid: #d15bff;
   --surface-line: rgba(253, 128, 255, 0.22);
+  /* Aliases so any leftover theme refs resolve to Google Sans */
+  --font-outfit: "Google Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-syne: "Google Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 @theme inline {
@@ -32,7 +35,8 @@ body {
   min-height: 100%;
 }
 
-.font-display {
+.font-display,
+.font-sans {
   font-family: "Google Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
