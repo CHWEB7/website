@@ -7,6 +7,8 @@ type Dot = {
   oy: number;
   phase: number;
   band: number;
+  // Precomputed regional blob strength (static)
+  blob: number;
 };
 
 /**
@@ -41,29 +43,35 @@ export default function InteractiveBackground() {
     let targetY = 0;
     let hasPointer = false;
     let dots: Dot[] = [];
-    let spacing = 6;
+    let spacing = 7;
     let logoMask: Uint8Array | null = null;
     let logoW = 0;
     let logoH = 0;
-    // World-space size of the logo silhouette (px)
-    const LOGO_WORLD = 140;
+    const LOGO_WORLD = 148;
 
     // Prebuilt fill styles — avoid per-dot string alloc
     const STYLES: string[] = [];
-    for (let a = 0; a < 32; a++) {
-      const alpha = (a / 31) * 0.9;
+    for (let a = 0; a < 24; a++) {
+      const alpha = (a / 23) * 0.88;
       STYLES.push(`rgba(196,178,224,${alpha.toFixed(3)})`);
     }
     const LOGO_STYLES: string[] = [];
-    for (let a = 0; a < 32; a++) {
-      const t = a / 31;
-      const alpha = 0.2 + t * 0.75;
-      // Brand tint #AB3BFF → #FD80FF
+    for (let a = 0; a < 24; a++) {
+      const t = a / 23;
+      const alpha = 0.25 + t * 0.72;
       const r = (171 + t * 82) | 0;
       const g = (59 + t * 69) | 0;
-      const b = (255 - t * 0) | 0;
-      LOGO_STYLES.push(`rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+      LOGO_STYLES.push(`rgba(${r},${g},255,${alpha.toFixed(3)})`);
     }
+
+    // Cheap sin LUT for wave motion
+    const LUT = 2048;
+    const SIN = new Float32Array(LUT);
+    for (let i = 0; i < LUT; i++) SIN[i] = Math.sin((i / LUT) * Math.PI * 2);
+    const sinApprox = (x: number) => {
+      const t = ((x / (Math.PI * 2)) % 1 + 1) % 1;
+      return SIN[(t * LUT) | 0];
+    };
 
     const logoImg = new Image();
     logoImg.decoding = "async";
@@ -81,7 +89,7 @@ export default function InteractiveBackground() {
       sctx.drawImage(logoImg, 0, 0);
       const { data } = sctx.getImageData(0, 0, srcW, srcH);
 
-      // PNG is opaque black behind the mark — mask by luminance, not alpha
+      // Opaque black PNG — mask by luminance, not alpha
       let minX = srcW;
       let minY = srcH;
       let maxX = 0;
@@ -102,7 +110,6 @@ export default function InteractiveBackground() {
       }
       if (maxX <= minX || maxY <= minY) return;
 
-      // Pad crop so ears/base aren't clipped
       const pad = Math.max(4, ((maxX - minX) * 0.04) | 0);
       minX = Math.max(0, minX - pad);
       minY = Math.max(0, minY - pad);
@@ -131,28 +138,37 @@ export default function InteractiveBackground() {
     }
 
     function buildDots() {
-      // Keep density GitLab-fine but bounded for 60fps
-      spacing = width < 700 ? 7 : 6;
+      // Cap density so continuous motion stays at ~60fps
+      spacing = width < 900 ? 8 : 7;
       const next: Dot[] = [];
       const cols = Math.ceil(width / spacing) + 1;
       const rows = Math.ceil(height / spacing) + 1;
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
-          // Slight jitter so the grid feels organic, not a rigid lattice
           const jx = ((col * 17 + row * 31) % 7) - 3;
           const jy = ((col * 13 + row * 23) % 7) - 3;
+          const ox = col * spacing + spacing * 0.5 + jx * 0.18;
+          const oy = row * spacing + spacing * 0.5 + jy * 0.18;
+          const mx = ox / Math.max(width, 1);
+          const my = oy / Math.max(height, 1);
+          const blob =
+            Math.exp(-((mx - 0.22) ** 2 * 5.5 + (my - 0.28) ** 2 * 4.5)) *
+              0.72 +
+            Math.exp(-((mx - 0.8) ** 2 * 6.5 + (my - 0.4) ** 2 * 5.5)) * 0.68 +
+            Math.exp(-((mx - 0.52) ** 2 * 4.5 + (my - 0.78) ** 2 * 6.5)) *
+              0.58;
           next.push({
-            ox: col * spacing + spacing * 0.5 + jx * 0.15,
-            oy: row * spacing + spacing * 0.5 + jy * 0.15,
+            ox,
+            oy,
             phase: ((col * 0.37 + row * 0.61) % 1) * Math.PI * 2,
             band: ((col / 14) | 0) + ((row / 10) | 0) * 5,
+            blob,
           });
         }
       }
       dots = next;
     }
 
-    // Soft washes drawn once into an offscreen layer, refreshed on resize
     let washCanvas: HTMLCanvasElement | null = null;
     function bakeWashes() {
       washCanvas = document.createElement("canvas");
@@ -243,109 +259,82 @@ export default function InteractiveBackground() {
     }
 
     function frame() {
-      // Continuous wave clock — denser clouds drift and pulse like GitLab
-      time += reduceMotion ? 0 : 0.032;
+      time += reduceMotion ? 0 : 0.034;
 
-      // Near-instant pointer follow (lag was from soft ease + heavy draws)
-      pointerX += (targetX - pointerX) * 0.88;
-      pointerY += (targetY - pointerY) * 0.88;
+      // Near-instant pointer — lag was soft ease + heavy per-frame work
+      pointerX += (targetX - pointerX) * 0.92;
+      pointerY += (targetY - pointerY) * 0.92;
 
       ctx!.clearRect(0, 0, width, height);
-      if (washCanvas) {
-        ctx!.drawImage(washCanvas, 0, 0, width, height);
-      }
+      if (washCanvas) ctx!.drawImage(washCanvas, 0, 0, width, height);
 
       const influence = Math.min(width, height) * 0.2;
       const influence2 = influence * influence;
       const halfLogo = LOGO_WORLD * 0.55;
       const logoReach2 = halfLogo * halfLogo * 4;
 
-      // Traveling density fronts
-      const w1 = time * 1.25;
-      const w2 = time * 0.92;
-      const w3 = time * 1.55;
-      const w4 = time * 0.48;
-
-      // Show logo silhouette even at rest (GitLab watermark feel),
-      // snapped to pointer when the mouse is over the stage.
-      const showLogo = true;
+      const w1 = time * 1.3;
+      const w2 = time * 0.95;
+      const w3 = time * 1.6;
+      const breathT = time * 0.4;
 
       for (let i = 0; i < dots.length; i++) {
         const dot = dots[i];
         const ox = dot.ox;
         const oy = dot.oy;
 
-        // Multi-axis density waves — this is the “living field” motion
-        const waveA = Math.sin(ox * 0.014 + w1 + dot.phase);
-        const waveB = Math.sin(oy * 0.012 - w2 + dot.band * 0.35);
-        const waveC = Math.sin((ox * 0.7 + oy) * 0.01 + w3);
-        const waveD = Math.sin(ox * 0.008 - oy * 0.009 + w4 + dot.phase);
+        const waveA = sinApprox(ox * 0.014 + w1 + dot.phase);
+        const waveB = sinApprox(oy * 0.012 - w2 + dot.band * 0.35);
+        const waveC = sinApprox((ox * 0.7 + oy) * 0.01 + w3);
 
         let density =
-          0.12 +
-          waveA * 0.32 +
-          waveB * 0.26 +
-          waveC * 0.22 +
-          waveD * 0.16 +
-          Math.sin(time * 0.7 + dot.band * 0.8) * 0.14;
+          0.1 +
+          waveA * 0.34 +
+          waveB * 0.28 +
+          waveC * 0.24 +
+          sinApprox(time * 0.75 + dot.band * 0.8) * 0.14;
 
-        // Regional cloud blobs that slowly breathe
-        const mx = ox / width;
-        const my = oy / height;
-        const breath = 0.85 + 0.15 * Math.sin(time * 0.35 + dot.band);
-        const blob =
-          (Math.exp(-((mx - 0.22) ** 2 * 5.5 + (my - 0.28) ** 2 * 4.5)) *
-            0.7 +
-            Math.exp(-((mx - 0.8) ** 2 * 6.5 + (my - 0.4) ** 2 * 5.5)) *
-              0.65 +
-            Math.exp(-((mx - 0.52) ** 2 * 4.5 + (my - 0.78) ** 2 * 6.5)) *
-              0.55) *
-          breath;
-        density *= 0.35 + blob;
+        const breath = 0.82 + 0.18 * sinApprox(breathT + dot.band);
+        density *= 0.32 + dot.blob * breath;
 
-        // Subtle physical drift so the field feels unbound from the grid
         let x = ox;
         let y = oy;
         if (!reduceMotion) {
-          x += waveA * 3.2 + waveD * 1.4;
-          y += waveB * 2.8 + waveC * 1.2;
+          x += waveA * 3.4 + waveC * 1.1;
+          y += waveB * 3.0 + waveA * 0.8;
         }
 
         let brand = 0;
-        if (showLogo) {
-          const dx = ox - pointerX;
-          const dy = oy - pointerY;
-          const d2 = dx * dx + dy * dy;
+        const dx = ox - pointerX;
+        const dy = oy - pointerY;
+        const d2 = dx * dx + dy * dy;
 
-          if (hasPointer && d2 < influence2) {
-            const near = 1 - Math.sqrt(d2) / influence;
-            density += near * near * 0.95;
-            const pull = near * 2.8;
-            const inv = 1 / (Math.sqrt(d2) || 1);
-            x -= dx * inv * pull;
-            y -= dy * inv * pull;
-          }
+        if (hasPointer && d2 < influence2) {
+          const near = 1 - Math.sqrt(d2) / influence;
+          density += near * near * 0.95;
+          const pull = near * 2.6;
+          const inv = 1 / (Math.sqrt(d2) || 1);
+          x -= dx * inv * pull;
+          y -= dy * inv * pull;
+        }
 
-          if (d2 < logoReach2) {
-            const lw = logoWeight(ox, oy);
-            if (lw > 0.04) {
-              brand = lw;
-              // Hard silhouette: logo dots always render brightly
-              density = Math.max(density, 0.55 + lw * 1.4);
-            }
+        if (d2 < logoReach2) {
+          const lw = logoWeight(ox, oy);
+          if (lw > 0.04) {
+            brand = lw;
+            density = Math.max(density, 0.55 + lw * 1.45);
           }
         }
 
-        if (density < 0.08) continue;
+        if (density < 0.09) continue;
 
-        const size = Math.max(1.15, 1.15 + density * 2.1);
-        const alphaIdx = Math.min(31, (density * 22) | 0);
+        const size = 1.15 + density * 2.0;
+        const alphaIdx = Math.min(23, (density * 18) | 0);
 
         if (brand > 0.05) {
-          const bi = Math.min(31, ((0.35 + brand * 0.65) * 31) | 0);
+          const bi = Math.min(23, ((0.4 + brand * 0.6) * 23) | 0);
           ctx!.fillStyle = LOGO_STYLES[bi];
-          // Slightly larger mark dots so the silhouette reads
-          const s = size * (1.05 + brand * 0.35);
+          const s = size * (1.08 + brand * 0.4);
           ctx!.fillRect(x - s * 0.5, y - s * 0.5, s, s);
         } else {
           ctx!.fillStyle = STYLES[alphaIdx];
@@ -353,9 +342,7 @@ export default function InteractiveBackground() {
         }
       }
 
-      if (!reduceMotion) {
-        raf = requestAnimationFrame(frame);
-      }
+      if (!reduceMotion) raf = requestAnimationFrame(frame);
     }
 
     resize();
@@ -363,11 +350,8 @@ export default function InteractiveBackground() {
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerleave", onPointerLeave);
 
-    if (reduceMotion) {
-      frame();
-    } else {
-      raf = requestAnimationFrame(frame);
-    }
+    if (reduceMotion) frame();
+    else raf = requestAnimationFrame(frame);
 
     return () => {
       cancelAnimationFrame(raf);
