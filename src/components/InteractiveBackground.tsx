@@ -47,7 +47,8 @@ export default function InteractiveBackground() {
     let logoMask: Uint8Array | null = null;
     let logoW = 0;
     let logoH = 0;
-    const LOGO_WORLD = 148;
+    // Compact mark so it reads as part of the field, not a stamp
+    const LOGO_WORLD = 64;
 
     // Prebuilt fill styles — avoid per-dot string alloc
     const STYLES: string[] = [];
@@ -55,13 +56,15 @@ export default function InteractiveBackground() {
       const alpha = (a / 23) * 0.88;
       STYLES.push(`rgba(196,178,224,${alpha.toFixed(3)})`);
     }
+    // Soft brand tint close to field dots so the fox blends in
     const LOGO_STYLES: string[] = [];
     for (let a = 0; a < 24; a++) {
       const t = a / 23;
-      const alpha = 0.25 + t * 0.72;
-      const r = (171 + t * 82) | 0;
-      const g = (59 + t * 69) | 0;
-      LOGO_STYLES.push(`rgba(${r},${g},255,${alpha.toFixed(3)})`);
+      const alpha = 0.14 + t * 0.42;
+      const r = (186 + t * 28) | 0;
+      const g = (162 + t * 18) | 0;
+      const b = (214 + t * 20) | 0;
+      LOGO_STYLES.push(`rgba(${r},${g},${b},${alpha.toFixed(3)})`);
     }
 
     // Cheap sin LUT for wave motion
@@ -320,9 +323,10 @@ export default function InteractiveBackground() {
 
         if (d2 < logoReach2) {
           const lw = logoWeight(ox, oy);
-          if (lw > 0.04) {
+          if (lw > 0.08) {
             brand = lw;
-            density = Math.max(density, 0.55 + lw * 1.45);
+            // Mild density lift — silhouette, not a hard stamp
+            density = Math.max(density, 0.28 + lw * 0.55);
           }
         }
 
@@ -331,10 +335,11 @@ export default function InteractiveBackground() {
         const size = 1.15 + density * 2.0;
         const alphaIdx = Math.min(23, (density * 18) | 0);
 
-        if (brand > 0.05) {
-          const bi = Math.min(23, ((0.4 + brand * 0.6) * 23) | 0);
+        if (brand > 0.08) {
+          const bi = Math.min(23, ((0.25 + brand * 0.55) * 23) | 0);
           ctx!.fillStyle = LOGO_STYLES[bi];
-          const s = size * (1.08 + brand * 0.4);
+          // Same scale as field dots so it dissolves into the dither
+          const s = size * (0.95 + brand * 0.12);
           ctx!.fillRect(x - s * 0.5, y - s * 0.5, s, s);
         } else {
           ctx!.fillStyle = STYLES[alphaIdx];

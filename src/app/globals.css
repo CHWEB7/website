@@ -17,8 +17,8 @@
   --color-accent-a: var(--accent-a);
   --color-accent-b: var(--accent-b);
   --color-accent-mid: var(--accent-mid);
-  --font-sans: var(--font-outfit);
-  --font-display: var(--font-syne);
+  --font-sans: "Google Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Google Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -28,12 +28,12 @@ body {
 }
 
 body {
-  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-family: "Google Sans", ui-sans-serif, system-ui, sans-serif;
   min-height: 100%;
 }
 
 .font-display {
-  font-family: var(--font-syne), var(--font-outfit), system-ui, sans-serif;
+  font-family: "Google Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 .text-gradient {

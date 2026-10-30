@@ -1,18 +1,9 @@
 import type { Metadata } from "next";
-import { Outfit, Syne } from "next/font/google";
+import "@fontsource/google-sans/latin-400.css";
+import "@fontsource/google-sans/latin-500.css";
+import "@fontsource/google-sans/latin-600.css";
+import "@fontsource/google-sans/latin-700.css";
 import "./globals.css";
-
-const outfit = Outfit({
-  variable: "--font-outfit",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const syne = Syne({
-  variable: "--font-syne",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Voltron Digital — Web products, built with intent",
@@ -22,11 +13,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${outfit.variable} ${syne.variable} h-full antialiased`}
-    >
-      <body className="min-h-full bg-base text-ink">{children}</body>
+    <html lang="en" className="h-full antialiased">
+      <body className="min-h-full bg-base font-sans text-ink">{children}</body>
     </html>
   );
 }
