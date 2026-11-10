@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import InteractiveBackground from "./InteractiveBackground";
 
 export default function Hero() {
@@ -17,8 +18,8 @@ export default function Hero() {
         className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-base to-transparent"
       />
 
-      <header className="relative z-10 px-5 pt-5 sm:px-8 sm:pt-7">
-        <a
+      <header className="relative z-10 flex items-center justify-between px-5 pt-5 sm:px-8 sm:pt-7">
+        <Link
           href="/"
           className="inline-flex cursor-pointer items-center"
           aria-label="Voltron Digital home"
@@ -31,7 +32,13 @@ export default function Hero() {
             priority
             className="h-10 w-10 object-contain sm:h-11 sm:w-11"
           />
-        </a>
+        </Link>
+        <Link
+          href="/insights"
+          className="text-sm font-semibold text-ink-muted transition hover:text-ink"
+        >
+          Insights
+        </Link>
       </header>
 
       <main className="relative z-10 flex flex-1 flex-col justify-center px-5 pb-20 pt-10 sm:px-8 sm:pb-24 lg:px-16">
