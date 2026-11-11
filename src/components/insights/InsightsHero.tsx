@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import type { InsightPost } from "@/lib/insights";
 
 const contactHref = "https://media-livid-pi.vercel.app";
@@ -21,20 +21,7 @@ export default function InsightsHero({ featured }: InsightsHeroProps) {
       />
       <div className="relative mx-auto max-w-7xl px-6 pt-5 pb-14 sm:px-10 sm:pt-6 sm:pb-16 lg:px-16 lg:pt-7 lg:pb-20">
         <header className="flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex items-center"
-            aria-label="Voltron Digital home"
-          >
-            <Image
-              src="/logo.png"
-              alt=""
-              width={44}
-              height={44}
-              priority
-              className="h-10 w-10 object-contain sm:h-11 sm:w-11"
-            />
-          </Link>
+          <BrandLogo priority />
           <Link
             href="/insights"
             aria-current="page"

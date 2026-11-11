@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import BrandLogo from "./BrandLogo";
 import InteractiveBackground from "./InteractiveBackground";
 
 export default function Hero() {
@@ -19,20 +19,7 @@ export default function Hero() {
       />
 
       <header className="relative z-10 flex items-center justify-between px-5 pt-5 sm:px-8 sm:pt-7">
-        <Link
-          href="/"
-          className="inline-flex cursor-pointer items-center"
-          aria-label="Voltron Digital home"
-        >
-          <Image
-            src="/logo.png"
-            alt="Voltron Digital"
-            width={44}
-            height={44}
-            priority
-            className="h-10 w-10 object-contain sm:h-11 sm:w-11"
-          />
-        </Link>
+        <BrandLogo priority />
         <Link
           href="/insights"
           className="text-sm font-semibold text-ink-muted transition hover:text-ink"
@@ -44,11 +31,11 @@ export default function Hero() {
       <main className="relative z-10 flex flex-1 flex-col justify-center px-5 pb-20 pt-10 sm:px-8 sm:pb-24 lg:px-16">
         <div className="hero-enter max-w-3xl">
           <h1 className="font-display text-[clamp(2.75rem,7.5vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.035em]">
-            <span className="text-gradient">Voltron Digital</span>
+            <span className="text-gradient">GRSC</span>
           </h1>
 
           <p className="mt-5 max-w-2xl font-display text-[clamp(1.25rem,2.6vw,1.85rem)] font-medium leading-snug tracking-[-0.02em] text-ink">
-            Web products, built with intent.
+            Governance, Risk, Security & compliance professional
           </p>
 
           <p className="mt-5 max-w-xl text-base leading-relaxed text-ink-muted sm:text-lg">

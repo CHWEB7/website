@@ -6,9 +6,9 @@ import "@fontsource/google-sans/latin-700.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Voltron Digital — Web products, built with intent",
+  title: "Kettu — GRSC",
   description:
-    "Personal site for Voltron Digital: marketing sites, applications, and media systems — from first sketch to production deploy.",
+    "Governance, Risk, Security and compliance professional.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

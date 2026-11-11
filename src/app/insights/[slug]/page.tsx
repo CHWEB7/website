@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import BrandLogo from "@/components/BrandLogo";
 import InsightCover from "@/components/insights/InsightCover";
 import { allInsights, getInsight } from "@/lib/insights";
 
@@ -19,10 +19,10 @@ export async function generateMetadata({
   const { slug } = await params;
   const post = getInsight(slug);
   if (!post) {
-    return { title: "Insight — Voltron Digital" };
+    return { title: "Insight — Kettu" };
   }
   return {
-    title: `${post.title} — Voltron Digital`,
+    title: `${post.title} — Kettu`,
     description: post.excerpt,
   };
 }
@@ -38,19 +38,7 @@ export default async function InsightArticlePage({ params }: InsightPageProps) {
     <article className="min-h-dvh bg-white text-[#202124]">
       <header className="bg-base text-ink">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10 lg:px-16">
-          <Link
-            href="/"
-            className="inline-flex items-center"
-            aria-label="Voltron Digital home"
-          >
-            <Image
-              src="/logo.png"
-              alt=""
-              width={44}
-              height={44}
-              className="h-10 w-10 object-contain"
-            />
-          </Link>
+          <BrandLogo />
           <Link href="/insights" className="text-sm font-semibold text-ink">
             Insights
           </Link>

@@ -5,7 +5,7 @@ import InsightsHero from "@/components/insights/InsightsHero";
 import { featuredInsight, insightSections } from "@/lib/insights";
 
 export const metadata: Metadata = {
-  title: "Insights — Voltron Digital",
+  title: "Insights — Kettu",
   description:
     "Notes on designing, building, and shipping web products, grouped by design, engineering, and studio practice.",
 };
